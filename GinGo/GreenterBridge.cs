@@ -69,7 +69,23 @@ public static class GreenterBridge
                 return new BridgeResponse(false, $"Error del bridge (ExitCode {process.ExitCode}): {error}");
             }
 
-            return JsonSerializer.Deserialize<BridgeResponse>(output) ?? new BridgeResponse(false, "No se pudo deserializar la respuesta del bridge.");
+            try
+            {
+                // Limpiar posibles advertencias de PHP que se hayan colado en stdout
+                // Buscamos el inicio del JSON '{'
+                int jsonStart = output.IndexOf('{');
+                if (jsonStart >= 0)
+                {
+                    output = output.Substring(jsonStart);
+                }
+
+                return JsonSerializer.Deserialize<BridgeResponse>(output, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) 
+                    ?? new BridgeResponse(false, "No se pudo deserializar la respuesta del bridge.");
+            }
+            catch (JsonException ex)
+            {
+                return new BridgeResponse(false, $"Error al procesar respuesta del bridge (JSON inválido): {ex.Message}. Salida: {output}");
+            }
         }
         catch (Exception ex)
         {
@@ -78,4 +94,13 @@ public static class GreenterBridge
     }
 }
 
-public record BridgeResponse(bool Success, string Message, string? CdrZip = null, string? Xml = null);
+public record BridgeResponse(
+    bool Success, 
+    string Message, 
+    string? DocumentName = null,
+    string? XmlPath = null,
+    string? CdrPath = null,
+    string? PdfPath = null,
+    string? SunatCode = null,
+    string? SunatDescription = null
+);

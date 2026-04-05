@@ -3,6 +3,8 @@
   "description": "Puente local entre GinGo y Greenter para pruebas beta",
   "type": "project",
   "require": {
-    "greenter/lite": "^5.1"
+    "greenter/lite": "^5.1",
+    "greenter/report": "^5.0",
+    "dompdf/dompdf": "^2.0"
   }
 }

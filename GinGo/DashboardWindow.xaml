@@ -35,6 +35,7 @@
                     <Button x:Name="BtnDashboard" Content="Dashboard" Margin="0,5" Height="45" Background="Transparent" Foreground="{DynamicResource SidebarFgBrush}" Click="Menu_Click" Tag="DashboardView" HorizontalContentAlignment="Left" Padding="20,0"/>
                     <Button x:Name="BtnValidarUsuario" Content="Validar Usuario" Margin="0,5" Height="45" Background="Transparent" Foreground="{DynamicResource SidebarFgBrush}" Click="Menu_Click" Tag="ValidarUsuarioView" HorizontalContentAlignment="Left" Padding="20,0"/>
                     <Button x:Name="BtnGenerarIngreso" Content="Generar Ingreso" Margin="0,5" Height="45" Background="Transparent" Foreground="{DynamicResource SidebarFgBrush}" Click="Menu_Click" Tag="GenerarIngresoView" HorizontalContentAlignment="Left" Padding="20,0" Visibility="Collapsed"/>
+                    <Button x:Name="BtnHistorial" Content="Historial Facturas" Margin="0,5" Height="45" Background="Transparent" Foreground="{DynamicResource SidebarFgBrush}" Click="Menu_Click" Tag="HistorialView" HorizontalContentAlignment="Left" Padding="20,0" Visibility="Collapsed"/>
                 </StackPanel>
 
                 <StackPanel Grid.Row="2" Margin="20,20">
@@ -563,6 +564,54 @@
                 </Grid>
             </Grid>
 
+            <!-- View: Historial -->
+            <Grid x:Name="HistorialView" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Historial de Comprobantes" FontSize="28" FontWeight="SemiBold" Margin="0,10,0,20" />
+
+                <!-- Filtros -->
+                <Border Grid.Row="1" Background="{DynamicResource CardBgBrush}" CornerRadius="10" Padding="15" Margin="0,0,0,20">
+                    <StackPanel Orientation="Horizontal">
+                        <StackPanel Margin="0,0,20,0">
+                            <TextBlock Text="Desde" Opacity="0.7" Margin="0,0,0,5"/>
+                            <DatePicker x:Name="HistorialDesdePicker" Width="150" Height="30" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,20,0">
+                            <TextBlock Text="Hasta" Opacity="0.7" Margin="0,0,0,5"/>
+                            <DatePicker x:Name="HistorialHastaPicker" Width="150" Height="30" />
+                        </StackPanel>
+                        <Button Content="Buscar" Width="100" Height="35" Margin="0,15,0,0" Background="{DynamicResource AccentBrush}" Foreground="White" Click="BuscarHistorial_Click" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Tabla -->
+                <Border Grid.Row="2" Background="{DynamicResource CardBgBrush}" CornerRadius="10" Padding="10">
+                    <DataGrid x:Name="HistorialDataGrid" ItemsSource="{Binding Comprobantes}" AutoGenerateColumns="False" IsReadOnly="True" Background="Transparent" BorderThickness="0" SelectionMode="Single" RowHeight="40" VerticalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Fecha" Binding="{Binding FechaEmision, StringFormat=\{0:dd/MM/yyyy HH:mm\}}" Width="150"/>
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding TipoDoc}" Width="60"/>
+                            <DataGridTextColumn Header="Serie-Correlativo" Binding="{Binding SerieCorrelativo}" Width="120"/>
+                            <DataGridTextColumn Header="Cliente" Binding="{Binding NombreCliente}" Width="*"/>
+                            <DataGridTextColumn Header="Total" Binding="{Binding Total, StringFormat=S/ \{0:N2\}}" Width="100"/>
+                            <DataGridTemplateColumn Header="Acciones" Width="180">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="PDF" Margin="5,0" Padding="10,2" Background="#E11D48" Foreground="White" Click="DescargarPdf_Click" Tag="{Binding PdfPath}"/>
+                                            <Button Content="XML" Margin="5,0" Padding="10,2" Background="{DynamicResource AccentBrush}" Foreground="White" Click="DescargarXml_Click" Tag="{Binding XmlPath}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

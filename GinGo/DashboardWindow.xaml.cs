@@ -1,18 +1,41 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using MySqlConnector;
 using OxyPlot;
 using OxyPlot.Series;
 using OxyPlot.Axes;
+using GinGo.Data;
 
 namespace GinGo;
+
+public class Comprobante
+{
+    public int Id { get; set; }
+    public string TipoDoc { get; set; } = string.Empty;
+    public string Serie { get; set; } = string.Empty;
+    public string Correlativo { get; set; } = string.Empty;
+    public string SerieCorrelativo => $"{Serie}-{Correlativo}";
+    public DateTime FechaEmision { get; set; }
+    public string RucEmisor { get; set; } = string.Empty;
+    public string DocCliente { get; set; } = string.Empty;
+    public string NombreCliente { get; set; } = string.Empty;
+    public decimal Total { get; set; }
+    public string? XmlPath { get; set; }
+    public string? CdrPath { get; set; }
+    public string? PdfPath { get; set; }
+    public string EstadoSunat { get; set; } = "PENDIENTE";
+}
 
 public partial class DashboardWindow : Window, INotifyPropertyChanged
 {
@@ -20,6 +43,7 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
     public PlotModel MonthlyModel { get; set; }
     public PlotModel TypeModel { get; set; }
     public ObservableCollection<FacturaDetalleItem> FacturaDetalles { get; } = new();
+    public ObservableCollection<Comprobante> Comprobantes { get; } = new();
     public ObservableCollection<string> TipoIgvOptions { get; } =
     [
         "Gravado (18%)",
@@ -144,6 +168,9 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
         pieSeries.Slices.Add(new PieSlice("Boletas", 20) { Fill = OxyColor.Parse("#F59E0B") });
         TypeModel.Series.Add(pieSeries);
 
+        HistorialDesdePicker.SelectedDate = DateTime.Now.AddDays(-7);
+        HistorialHastaPicker.SelectedDate = DateTime.Now;
+
         AgregarDetalleFactura();
         RecalcularFacturaTotales();
         DataContext = this;
@@ -156,10 +183,105 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
             DashboardView.Visibility = Visibility.Collapsed;
             ValidarUsuarioView.Visibility = Visibility.Collapsed;
             GenerarIngresoView.Visibility = Visibility.Collapsed;
+            HistorialView.Visibility = Visibility.Collapsed;
 
             if (viewName == "DashboardView") DashboardView.Visibility = Visibility.Visible;
             if (viewName == "ValidarUsuarioView") ValidarUsuarioView.Visibility = Visibility.Visible;
             if (viewName == "GenerarIngresoView") GenerarIngresoView.Visibility = Visibility.Visible;
+            if (viewName == "HistorialView")
+            {
+                HistorialView.Visibility = Visibility.Visible;
+                BuscarHistorial();
+            }
+        }
+    }
+
+    private async void BuscarHistorial_Click(object sender, RoutedEventArgs e)
+    {
+        await BuscarHistorial();
+    }
+
+    private async Task BuscarHistorial()
+    {
+        try
+        {
+            Comprobantes.Clear();
+            var desde = HistorialDesdePicker.SelectedDate ?? DateTime.Now.AddDays(-7);
+            var hasta = HistorialHastaPicker.SelectedDate ?? DateTime.Now;
+
+            // Aseguramos que 'hasta' sea al final del día
+            hasta = hasta.Date.AddDays(1).AddSeconds(-1);
+
+            using var connection = await DbConnectionFactory.CreateOpenConnectionAsync();
+            var query = "SELECT * FROM comprobantes WHERE fecha_emision BETWEEN @desde AND @hasta ORDER BY fecha_emision DESC";
+            using var command = new MySqlCommand(query, connection);
+            command.Parameters.AddWithValue("@desde", desde);
+            command.Parameters.AddWithValue("@hasta", hasta);
+
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                Comprobantes.Add(new Comprobante
+                {
+                    Id = reader.GetInt32("id"),
+                    TipoDoc = reader.GetString("tipo_doc"),
+                    Serie = reader.GetString("serie"),
+                    Correlativo = reader.GetString("correlativo"),
+                    FechaEmision = reader.GetDateTime("fecha_emision"),
+                    RucEmisor = reader.GetString("ruc_emisor"),
+                    DocCliente = reader.GetString("doc_cliente"),
+                    NombreCliente = reader.GetString("nombre_cliente"),
+                    Total = reader.GetDecimal("total"),
+                    XmlPath = reader.IsDBNull(reader.GetOrdinal("xml_path")) ? null : reader.GetString("xml_path"),
+                    CdrPath = reader.IsDBNull(reader.GetOrdinal("cdr_path")) ? null : reader.GetString("cdr_path"),
+                    PdfPath = reader.IsDBNull(reader.GetOrdinal("pdf_path")) ? null : reader.GetString("pdf_path"),
+                    EstadoSunat = reader.GetString("estado_sunat")
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error al cargar el historial: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void DescargarPdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string path && !string.IsNullOrEmpty(path))
+        {
+            AbrirArchivo(path);
+        }
+    }
+
+    private void DescargarXml_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string path && !string.IsNullOrEmpty(path))
+        {
+            AbrirArchivo(path);
+        }
+    }
+
+    private void AbrirArchivo(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                };
+                Process.Start(psi);
+            }
+            else
+            {
+                MessageBox.Show("El archivo no existe en la ruta especificada: " + path, "Archivo no encontrado", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("No se pudo abrir el archivo: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -209,10 +331,12 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
 
             BtnValidarUsuario.Visibility = Visibility.Collapsed;
             BtnGenerarIngreso.Visibility = Visibility.Visible;
+            BtnHistorial.Visibility = Visibility.Visible;
 
             DashboardView.Visibility = Visibility.Collapsed;
             ValidarUsuarioView.Visibility = Visibility.Collapsed;
             GenerarIngresoView.Visibility = Visibility.Visible;
+            HistorialView.Visibility = Visibility.Collapsed;
 
             FacturaFormContainer.Visibility = Visibility.Visible;
             BoletaFormContainer.Visibility = Visibility.Collapsed;
@@ -236,11 +360,13 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
 
         // Ocultamos la pestaña de Generar Ingreso y mostramos Validar Usuario
         BtnGenerarIngreso.Visibility = Visibility.Collapsed;
+        BtnHistorial.Visibility = Visibility.Collapsed;
         BtnValidarUsuario.Visibility = Visibility.Visible;
 
         // Cambiamos la vista
         DashboardView.Visibility = Visibility.Collapsed;
         GenerarIngresoView.Visibility = Visibility.Collapsed;
+        HistorialView.Visibility = Visibility.Collapsed;
         ValidarUsuarioView.Visibility = Visibility.Visible;
     }
 
@@ -595,7 +721,10 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
         this.Close();
     }
 
-    private readonly string ApiToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImFjdWFyaW9qYXJhZ29uemFsb0BnbWFpbC5jb20ifQ.fmLGxsqBajOhJxycKNy8FiTC36sXa87Oo0GDmAZzzro";
+    private static string GetApiToken()
+    {
+        return Environment.GetEnvironmentVariable("APISPERU_TOKEN")?.Trim() ?? string.Empty;
+    }
 
     private async void FacturaDocNumero_LostFocus(object sender, RoutedEventArgs e)
     {
@@ -628,9 +757,17 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
     {
         try
         {
+            var token = GetApiToken();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                razonSocialBox.Text = "";
+                if (direccionBox != null) direccionBox.Text = "";
+                return;
+            }
+
             using (HttpClient client = new HttpClient())
             {
-                string url = $"https://dniruc.apisperu.com/api/v1/ruc/{ruc}?token={ApiToken}";
+                string url = $"https://dniruc.apisperu.com/api/v1/ruc/{ruc}?token={token}";
                 HttpResponseMessage response = await client.GetAsync(url);
                 if (response.IsSuccessStatusCode)
                 {
@@ -660,9 +797,16 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
     {
         try
         {
+            var token = GetApiToken();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                nombreBox.Text = "";
+                return;
+            }
+
             using (HttpClient client = new HttpClient())
             {
-                string url = $"https://dniruc.apisperu.com/api/v1/dni/{dni}?token={ApiToken}";
+                string url = $"https://dniruc.apisperu.com/api/v1/dni/{dni}?token={token}";
                 HttpResponseMessage response = await client.GetAsync(url);
                 if (response.IsSuccessStatusCode)
                 {
@@ -693,9 +837,15 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
     {
         try
         {
+            var token = GetApiToken();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return (false, "Falta configurar APISPERU_TOKEN en variables de entorno.", string.Empty);
+            }
+
             using (HttpClient client = new HttpClient())
             {
-                string url = $"https://dniruc.apisperu.com/api/v1/ruc/{ruc}?token={ApiToken}";
+                string url = $"https://dniruc.apisperu.com/api/v1/ruc/{ruc}?token={token}";
                 HttpResponseMessage response = await client.GetAsync(url);
 
                 if (!response.IsSuccessStatusCode)

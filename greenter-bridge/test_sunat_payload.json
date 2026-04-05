@@ -5,16 +5,26 @@
     "claveSol": "moddatos",
     "tipoDoc": "01",
     "serie": "F001",
-    "correlativo": "1",
+    "correlativo": "123",
+    "emisor": {
+        "ruc": "20000000001",
+        "razonSocial": "EMPRESA BETA SAC",
+        "direccion": "AV. PRUEBA 123",
+        "ubigeo": "150101",
+        "departamento": "LIMA",
+        "provincia": "LIMA",
+        "distrito": "LIMA",
+        "codLocal": "0000"
+    },
     "cliente": {
         "tipoDoc": "6",
         "numDoc": "20438075234",
-        "razonSocial": "CLIENTE PRUEBA"
+        "razonSocial": "CLIENTE DE PRUEBA SUNAT"
     },
     "details": [
         {
             "codigo": "P001",
-            "descripcion": "PRODUCTO 1",
+            "descripcion": "SERVICIO DE PRUEBA SUNAT BETA",
             "cantidad": 1,
             "unidad": "NIU",
             "precioUnitario": 118.00,

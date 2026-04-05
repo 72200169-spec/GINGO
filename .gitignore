@@ -13,8 +13,16 @@ composer.phar
 input.json
 output.txt
 
+# Greenter / SUNAT
+greenter-bridge/archivos_sunat/
+greenter-bridge/*.pem
+greenter-bridge/*.pfx
+
 # Database
 database/*.sql.bak
+
+# Local docs / tooling
+greenter-docs/
 
 # IDEs
 .vs/

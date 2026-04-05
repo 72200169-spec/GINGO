@@ -7,7 +7,7 @@ public static class DbConnectionFactory
     public static async Task<MySqlConnection> CreateOpenConnectionAsync()
     {
         var host = GetEnv("GINGO_DB_HOST", "127.0.0.1");
-        var port = GetEnvInt("GINGO_DB_PORT", 3306);
+        var port = GetEnvInt("GINGO_DB_PORT", 13306);
         var database = GetEnv("GINGO_DB_NAME", "gingo");
         var user = GetEnv("GINGO_DB_USER", "gingo_app");
         var password = GetEnv("GINGO_DB_PASSWORD", "gingo_password");

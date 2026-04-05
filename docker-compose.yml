@@ -8,7 +8,7 @@ services:
       MYSQL_USER: gingo_app
       MYSQL_PASSWORD: gingo_password
     ports:
-      - "3306:3306"
+      - "13306:3306"
     volumes:
       - gingo_mysql_data:/var/lib/mysql
       - ./database:/docker-entrypoint-initdb.d:ro

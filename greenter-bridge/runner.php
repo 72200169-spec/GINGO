@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+// Desactivar reporte de errores a stdout para evitar corromper el JSON de salida
+error_reporting(0);
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 use Greenter\Model\Client\Client;
 use Greenter\Model\Company\Address;
 use Greenter\Model\Company\Company;
@@ -10,9 +15,9 @@ use Greenter\Model\Sale\Invoice;
 use Greenter\Model\Sale\Legend;
 use Greenter\Model\Sale\SaleDetail;
 use Greenter\See;
-use Greenter\Ws\Services\ExtService;
-use Greenter\Ws\Services\SoapClient;
 use Greenter\Ws\Services\SunatEndpoints;
+use Greenter\Report\HtmlReport;
+use Greenter\Report\Resolver\DefaultTemplateResolver;
 
 require __DIR__ . '/vendor/autoload.php';
 
@@ -45,204 +50,222 @@ function respond(array $data, int $exitCode = 0): void
     exit($exitCode);
 }
 
-function getValue(array $data, string $key, string $fallback = ''): string
+function getValue(array $data, string $key, $default = null)
 {
-    $value = $data[$key] ?? $fallback;
-    return is_string($value) ? trim($value) : $fallback;
+    return $data[$key] ?? $default;
 }
-
-function createSee(string $ruc, string $user, string $password): See
-{
-    if (!file_exists(TEST_CERTIFICATE_PATH)) {
-        throw new RuntimeException('No existe el certificado beta de pruebas.');
-    }
-
-    $see = new See();
-    $see->setCertificate(file_get_contents(TEST_CERTIFICATE_PATH));
-    $see->setService(SunatEndpoints::FE_BETA);
-    $see->setClaveSOL($ruc, $user, $password);
-
-    return $see;
-}
-
-function validateCredentials(string $ruc, string $user, string $password): array
-{
-    $soap = new SoapClient();
-    $soap->setService(SunatEndpoints::FE_BETA);
-    $soap->setCredentials($ruc . $user, $password);
-
-    $service = new ExtService();
-    $service->setClient($soap);
-
-    $status = $service->getStatus('1');
-
-    if (!$status->isSuccess()) {
-        $error = $status->getError();
-        $message = $error ? ($error->getCode() . ' - ' . $error->getMessage()) : 'No fue posible validar las credenciales SOL.';
-
-        return [
-            'success' => false,
-            'message' => $message,
-        ];
-    }
-
-    return [
-        'success' => true,
-        'message' => 'Credenciales SOL válidas para entorno beta.',
-    ];
-}
-
-function buildInvoice(array $payload): Invoice
-{
-    $emisor = $payload['emisor'] ?? [];
-    $cliente = $payload['cliente'] ?? [];
-    $detalle = $payload['detalle'] ?? [];
-    $totales = $payload['totales'] ?? [];
-
-    $address = (new Address())
-        ->setUbigueo(getValue($emisor, 'ubigeo', '150101'))
-        ->setDepartamento(getValue($emisor, 'departamento', 'LIMA'))
-        ->setProvincia(getValue($emisor, 'provincia', 'LIMA'))
-        ->setDistrito(getValue($emisor, 'distrito', 'LIMA'))
-        ->setUrbanizacion(getValue($emisor, 'urbanizacion', '-'))
-        ->setDireccion(getValue($emisor, 'direccion', 'Av. Prueba 123'))
-        ->setCodLocal(getValue($emisor, 'codLocal', '0000'));
-
-    $company = (new Company())
-        ->setRuc(getValue($emisor, 'ruc', '20000000001'))
-        ->setRazonSocial(getValue($emisor, 'razonSocial', 'EMPRESA BETA SAC'))
-        ->setNombreComercial(getValue($emisor, 'nombreComercial', getValue($emisor, 'razonSocial', 'EMPRESA BETA SAC')))
-        ->setAddress($address);
-
-    $client = (new Client())
-        ->setTipoDoc(getValue($cliente, 'tipoDoc', '6'))
-        ->setNumDoc(getValue($cliente, 'numDoc', '20000000001'))
-        ->setRznSocial(getValue($cliente, 'razonSocial', 'CLIENTE BETA SAC'));
-
-    $invoice = (new Invoice())
-        ->setUblVersion('2.1')
-        ->setTipoOperacion('0101')
-        ->setTipoDoc(getValue($payload, 'tipoDoc', '01'))
-        ->setSerie(getValue($payload, 'serie', 'F001'))
-        ->setCorrelativo(getValue($payload, 'correlativo', '1'))
-        ->setFechaEmision(new DateTime(getValue($payload, 'fechaEmision', date('Y-m-d H:i:sP'))))
-        ->setFormaPago(new FormaPagoContado())
-        ->setTipoMoneda(getValue($payload, 'moneda', 'PEN'))
-        ->setCompany($company)
-        ->setClient($client)
-        ->setMtoOperGravadas((float)($totales['operGravadas'] ?? 0))
-        ->setMtoIGV((float)($totales['igv'] ?? 0))
-        ->setTotalImpuestos((float)($totales['totalImpuestos'] ?? 0))
-        ->setValorVenta((float)($totales['valorVenta'] ?? 0))
-        ->setSubTotal((float)($totales['subTotal'] ?? 0))
-        ->setMtoImpVenta((float)($totales['totalVenta'] ?? 0));
-
-    $details = [];
-    foreach ($payload['details'] ?? [] as $det) {
-        $item = (new SaleDetail())
-            ->setCodProducto(getValue($det, 'codigo', 'P001'))
-            ->setUnidad(getValue($det, 'unidad', 'NIU'))
-            ->setCantidad((float)($det['cantidad'] ?? 1))
-            ->setMtoValorUnitario((float)($det['valorUnitario'] ?? 0))
-            ->setDescripcion(getValue($det, 'descripcion', 'PRODUCTO'))
-            ->setMtoBaseIgv((float)($det['baseIgv'] ?? 0))
-            ->setPorcentajeIgv((float)($det['porcentajeIgv'] ?? 18.00))
-            ->setIgv((float)($det['igv'] ?? 0))
-            ->setTipAfeIgv(getValue($det, 'tipAfeIgv', '10'))
-            ->setTotalImpuestos((float)($det['totalImpuestos'] ?? 0))
-            ->setMtoValorVenta((float)($det['valorVenta'] ?? 0))
-            ->setMtoPrecioUnitario((float)($det['precioUnitario'] ?? 0));
-        $details[] = $item;
-    }
-
-    if (empty($details)) {
-        // Fallback for old single detail format
-        $detalle = $payload['detalle'] ?? [];
-        $item = (new SaleDetail())
-            ->setCodProducto(getValue($detalle, 'codigo', 'P001'))
-            ->setUnidad(getValue($detalle, 'unidad', 'NIU'))
-            ->setCantidad((float)($detalle['cantidad'] ?? 1))
-            ->setMtoValorUnitario((float)($detalle['valorUnitario'] ?? 0))
-            ->setDescripcion(getValue($detalle, 'descripcion', 'PRODUCTO'))
-            ->setMtoBaseIgv((float)($detalle['baseIgv'] ?? 0))
-            ->setPorcentajeIgv((float)($detalle['porcentajeIgv'] ?? 18.00))
-            ->setIgv((float)($detalle['igv'] ?? 0))
-            ->setTipAfeIgv(getValue($detalle, 'tipAfeIgv', '10'))
-            ->setTotalImpuestos((float)($detalle['totalImpuestos'] ?? 0))
-            ->setMtoValorVenta((float)($detalle['valorVenta'] ?? 0))
-            ->setMtoPrecioUnitario((float)($detalle['precioUnitario'] ?? 0));
-        $details[] = $item;
-    }
-
-    $legend = (new Legend())
-        ->setCode('1000')
-        ->setValue(getValue($payload, 'montoLetras', 'SON ZERO CON 00/100 SOLES'));
-
-    $invoice->setDetails($details)->setLegends([$legend]);
-
-    return $invoice;
-}
-
-function sendInvoice(array $payload): array
-{
-    $ruc = getValue($payload, 'ruc', '20000000001');
-    $user = getValue($payload, 'usuarioSol', 'MODDATOS');
-    $password = getValue($payload, 'claveSol', 'moddatos');
-
-    $see = createSee($ruc, $user, $password);
-    $invoice = buildInvoice($payload);
-    $result = $see->send($invoice);
-    $xml = $see->getFactory()->getLastXml();
-
-    if (!$result->isSuccess()) {
-        $error = $result->getError();
-        return [
-            'success' => false,
-            'message' => $error ? ($error->getCode() . ' - ' . $error->getMessage()) : 'SUNAT devolvió un error al enviar la factura.',
-            'xmlBase64' => base64_encode($xml ?: ''),
-            'documentName' => $invoice->getName(),
-        ];
-    }
-
-    $cdr = $result->getCdrResponse();
-
-    return [
-        'success' => true,
-        'message' => 'Factura enviada correctamente a SUNAT.',
-        'documentName' => $invoice->getName(),
-        'xmlBase64' => base64_encode($xml ?: ''),
-        'cdrZipBase64' => base64_encode($result->getCdrZip() ?: ''),
-        'sunatCode' => $cdr ? $cdr->getCode() : '',
-        'sunatDescription' => $cdr ? $cdr->getDescription() : '',
-        'sunatNotes' => $cdr ? $cdr->getNotes() : [],
-    ];
-}
-
-$input = readInput();
-$action = getValue($input, 'action');
 
 try {
-    switch ($action) {
-        case 'validate':
-            $ruc = getValue($input, 'ruc', '20000000001');
-            $user = getValue($input, 'usuarioSol', 'MODDATOS');
-            $password = getValue($input, 'claveSol', 'moddatos');
-            respond(validateCredentials($ruc, $user, $password));
-            break;
+    $payload = readInput();
+    $action = getValue($payload, 'action');
 
-        case 'sendInvoice':
-            respond(sendInvoice($input));
-            break;
+    if ($action === 'sendInvoice') {
+        $see = new See();
+        $certificatePath = getenv('GINGO_CERTIFICATE_PATH') ?: TEST_CERTIFICATE_PATH;
+        if (!file_exists($certificatePath)) {
+            respond(['success' => false, 'message' => 'Certificado no encontrado en: ' . $certificatePath], 1);
+        }
+        $see->setCertificate(file_get_contents($certificatePath));
+        $see->setService(SunatEndpoints::FE_BETA);
+        $see->setClaveSOL(getValue($payload, 'ruc', '20000000001'), getValue($payload, 'usuarioSol', 'MODDATOS'), getValue($payload, 'claveSol', 'moddatos'));
 
-        default:
+        $client = (new Client())
+            ->setTipoDoc(getValue($payload['cliente'], 'tipoDoc', '6'))
+            ->setNumDoc(getValue($payload['cliente'], 'numDoc', '20000000001'))
+            ->setRznSocial(getValue($payload['cliente'], 'razonSocial', 'CLIENTE PRUEBA'));
+
+        $emisorData = getValue($payload, 'emisor', []);
+        $address = (new Address())
+            ->setUbigueo(getValue($emisorData, 'ubigeo', '150101'))
+            ->setDepartamento(getValue($emisorData, 'departamento', 'LIMA'))
+            ->setProvincia(getValue($emisorData, 'provincia', 'LIMA'))
+            ->setDistrito(getValue($emisorData, 'distrito', 'LIMA'))
+            ->setCodLocal(getValue($emisorData, 'codLocal', '0000'))
+            ->setDireccion(getValue($emisorData, 'direccion', 'AV. PRUEBA 123'));
+
+        $company = (new Company())
+            ->setRuc(getValue($emisorData, 'ruc', '20000000001'))
+            ->setRazonSocial(getValue($emisorData, 'razonSocial', 'EMPRESA PRUEBA'))
+            ->setNombreComercial(getValue($emisorData, 'nombreComercial', 'EMPRESA PRUEBA'))
+            ->setAddress($address);
+
+        $totales = getValue($payload, 'totales', []);
+
+        $invoice = (new Invoice())
+            ->setUblVersion('2.1')
+            ->setTipoOperacion('0101')
+            ->setTipoDoc(getValue($payload, 'tipoDoc', '01'))
+            ->setSerie(getValue($payload, 'serie', 'F001'))
+            ->setCorrelativo(getValue($payload, 'correlativo', '1'))
+            ->setFechaEmision(new DateTime(getValue($payload, 'fechaEmision', date('Y-m-d H:i:sP'))))
+            ->setFormaPago(new FormaPagoContado())
+            ->setTipoMoneda(getValue($payload, 'moneda', 'PEN'))
+            ->setCompany($company)
+            ->setClient($client)
+            ->setMtoOperGravadas((float)($totales['operGravadas'] ?? 0))
+            ->setMtoIGV((float)($totales['igv'] ?? 0))
+            ->setTotalImpuestos((float)($totales['totalImpuestos'] ?? 0))
+            ->setValorVenta((float)($totales['operGravadas'] ?? 0))
+            ->setSubTotal((float)($totales['totalVenta'] ?? 0))
+            ->setMtoImpVenta((float)($totales['totalVenta'] ?? 0));
+
+        $details = [];
+        foreach ($payload['details'] ?? [] as $det) {
+            $item = (new SaleDetail())
+                ->setCodProducto(getValue($det, 'codigo', 'P001'))
+                ->setUnidad(getValue($det, 'unidad', 'NIU'))
+                ->setCantidad((float)($det['cantidad'] ?? 1))
+                ->setMtoValorUnitario((float)($det['valorUnitario'] ?? 0))
+                ->setDescripcion(getValue($det, 'descripcion', 'PRODUCTO'))
+                ->setMtoBaseIgv((float)($det['baseIgv'] ?? 0))
+                ->setPorcentajeIgv((float)($det['porcentajeIgv'] ?? 18.00))
+                ->setIgv((float)($det['igv'] ?? 0))
+                ->setTipAfeIgv(getValue($det, 'tipAfeIgv', '10'))
+                ->setTotalImpuestos((float)($det['totalImpuestos'] ?? 0))
+                ->setMtoValorVenta((float)($det['valorVenta'] ?? 0))
+                ->setMtoPrecioUnitario((float)($det['precioUnitario'] ?? 0));
+            $details[] = $item;
+        }
+
+        if (empty($details)) {
+            $detalle = $payload['detalle'] ?? [];
+            if (!empty($detalle)) {
+                $item = (new SaleDetail())
+                    ->setCodProducto(getValue($detalle, 'codigo', 'P001'))
+                    ->setUnidad(getValue($detalle, 'unidad', 'NIU'))
+                    ->setCantidad((float)($detalle['cantidad'] ?? 1))
+                    ->setMtoValorUnitario((float)($detalle['valorUnitario'] ?? 0))
+                    ->setDescripcion(getValue($detalle, 'descripcion', 'PRODUCTO'))
+                    ->setMtoBaseIgv((float)($detalle['baseIgv'] ?? 0))
+                    ->setPorcentajeIgv((float)($detalle['porcentajeIgv'] ?? 18.00))
+                    ->setIgv((float)($detalle['igv'] ?? 0))
+                    ->setTipAfeIgv(getValue($detalle, 'tipAfeIgv', '10'))
+                    ->setTotalImpuestos((float)($detalle['totalImpuestos'] ?? 0))
+                    ->setMtoValorVenta((float)($detalle['valorVenta'] ?? 0))
+                    ->setMtoPrecioUnitario((float)($detalle['precioUnitario'] ?? 0));
+                $details[] = $item;
+            }
+        }
+
+        $legend = (new Legend())
+            ->setCode('1000')
+            ->setValue(getValue($payload, 'montoLetras', 'SON ZERO CON 00/100 SOLES'));
+
+        $invoice->setDetails($details)->setLegends([$legend]);
+
+        $result = $see->send($invoice);
+
+        // Directorio de almacenamiento
+        $storageDir = __DIR__ . '/archivos_sunat';
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0777, true);
+        }
+
+        $fileName = $invoice->getName();
+        $xmlPath = $storageDir . '/' . $fileName . '.xml';
+        $cdrPath = '';
+        $pdfPath = '';
+
+        // Guardar XML
+        file_put_contents($xmlPath, $see->getFactory()->getLastXml());
+        
+        if ($result->isSuccess()) {
+            // Guardar CDR
+            $cdrPath = $storageDir . '/R-' . $fileName . '.zip';
+            file_put_contents($cdrPath, $result->getCdrZip());
+
+            // Generar PDF
+            try {
+                $report = new HtmlReport();
+                $resolver = new DefaultTemplateResolver();
+                $report->setTemplate($resolver->getTemplate($invoice));
+                
+                $params = [
+                    'system' => [
+                        'logo' => '',
+                        'hash' => '',
+                    ],
+                    'user' => [
+                        'header' => 'EMPRESA PRUEBA',
+                        'footer' => 'Gracias por su compra',
+                    ]
+                ];
+
+                $html = $report->render($invoice, $params);
+                
+                $dompdf = new \Dompdf\Dompdf([
+                    'isRemoteEnabled' => true,
+                    'defaultFont' => 'Arial',
+                ]);
+                $dompdf->loadHtml($html);
+                $dompdf->setPaper('A4', 'portrait');
+                $dompdf->render();
+                $pdfContent = $dompdf->output();
+                
+                $pdfPath = $storageDir . '/' . $fileName . '.pdf';
+                file_put_contents($pdfPath, $pdfContent);
+            } catch (Throwable $reportError) {
+                // Si falla el PDF, continuamos pero guardamos el error en el log
+                error_log("Error generando PDF: " . $reportError->getMessage());
+            }
+
+            // Registrar en base de datos (MySQL)
+            try {
+                $dbHost = getenv('GINGO_DB_HOST') ?: '127.0.0.1';
+                $dbPort = getenv('GINGO_DB_PORT') ?: '13306';
+                $dbName = getenv('GINGO_DB_NAME') ?: 'gingo';
+                $dbUser = getenv('GINGO_DB_USER') ?: 'gingo_app';
+                $dbPassword = getenv('GINGO_DB_PASSWORD') ?: 'gingo_password';
+
+                $pdo = new PDO("mysql:host={$dbHost};port={$dbPort};dbname={$dbName}", $dbUser, $dbPassword);
+                $stmt = $pdo->prepare("INSERT INTO comprobantes (tipo_doc, serie, correlativo, fecha_emision, ruc_emisor, doc_cliente, nombre_cliente, total, xml_path, cdr_path, pdf_path, estado_sunat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([
+                    $invoice->getTipoDoc(),
+                    $invoice->getSerie(),
+                    $invoice->getCorrelativo(),
+                    $invoice->getFechaEmision()->format('Y-m-d H:i:s'),
+                    $company->getRuc(),
+                    $client->getNumDoc(),
+                    $client->getRznSocial(),
+                    $invoice->getMtoImpVenta(),
+                    $xmlPath,
+                    $cdrPath,
+                    $pdfPath,
+                    'ACEPTADO'
+                ]);
+            } catch (PDOException $dbError) {
+                error_log("Error en DB: " . $dbError->getMessage());
+            }
+        }
+
+        if (!$result->isSuccess()) {
             respond([
                 'success' => false,
-                'message' => 'Acción no soportada por el puente local.',
-            ], 1);
+                'message' => 'Error al enviar a SUNAT: ' . $result->getError()->getMessage(),
+                'code' => $result->getError()->getCode(),
+            ]);
+        }
+
+        respond([
+            'success' => true,
+            'message' => 'Factura enviada correctamente a SUNAT.',
+            'documentName' => $fileName,
+            'xmlPath' => $xmlPath,
+            'cdrPath' => $cdrPath,
+            'pdfPath' => $pdfPath,
+            'sunatCode' => $result->getCdrResponse()->getCode(),
+            'sunatDescription' => $result->getCdrResponse()->getDescription(),
+        ]);
+    } else {
+        respond([
+            'success' => false,
+            'message' => 'Acción no soportada: ' . $action,
+        ]);
     }
 } catch (Throwable $e) {
     respond([
         'success' => false,
-        'message' => $e->getMessage(),
+        'message' => 'Error crítico en el bridge: ' . $e->getMessage(),
+        'trace' => $e->getTraceAsString()
     ], 1);
 }
