@@ -1,0 +1,18 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: gingo-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: gingo
+      MYSQL_USER: gingo_app
+      MYSQL_PASSWORD: gingo_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - gingo_mysql_data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d:ro
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+
+volumes:
+  gingo_mysql_data:

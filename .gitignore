@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# PHP (Composer)
+vendor/
+composer.phar
+.composer/
+input.json
+output.txt
+
+# Database
+database/*.sql.bak
+
+# IDEs
+.vs/
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini

@@ -1,0 +1,8 @@
+{
+  "name": "gingo/greenter-bridge",
+  "description": "Puente local entre GinGo y Greenter para pruebas beta",
+  "type": "project",
+  "require": {
+    "greenter/lite": "^5.1"
+  }
+}

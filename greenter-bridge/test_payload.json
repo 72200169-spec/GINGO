@@ -1,0 +1,37 @@
+{
+    "action": "sendInvoice",
+    "ruc": "20000000001",
+    "usuarioSol": "MODDATOS",
+    "claveSol": "moddatos",
+    "tipoDoc": "01",
+    "serie": "F001",
+    "correlativo": "1",
+    "cliente": {
+        "tipoDoc": "6",
+        "numDoc": "20438075234",
+        "razonSocial": "CLIENTE PRUEBA"
+    },
+    "details": [
+        {
+            "codigo": "P001",
+            "descripcion": "PRODUCTO 1",
+            "cantidad": 1,
+            "unidad": "NIU",
+            "precioUnitario": 118.00,
+            "valorUnitario": 100.00,
+            "baseIgv": 100.00,
+            "igv": 18.00,
+            "totalImpuestos": 18.00,
+            "valorVenta": 100.00,
+            "tipAfeIgv": "10"
+        }
+    ],
+    "totales": {
+        "totalVenta": 118.00,
+        "totalImpuestos": 18.00,
+        "igv": 18.00,
+        "operGravadas": 100.00,
+        "subTotal": 118.00
+    },
+    "montoLetras": "SON CIENTO DIECIOCHO CON 00/100 SOLES"
+}
