@@ -438,19 +438,31 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
                     numDoc = FacturaDocNumeroTextBox.Text.Trim(),
                     razonSocial = FacturaRazonSocialTextBox.Text.Trim()
                 },
-                details = FacturaDetalles.Select(d => new
-                {
-                    codigo = d.Codigo,
-                    descripcion = d.Descripcion,
-                    cantidad = ParseDecimal(d.Cantidad),
-                    unidad = "NIU",
-                    precioUnitario = ParseDecimal(d.PrecioTotal) / (ParseDecimal(d.Cantidad) == 0 ? 1 : ParseDecimal(d.Cantidad)),
-                    valorUnitario = (ParseDecimal(d.PrecioTotal) / 1.18m) / (ParseDecimal(d.Cantidad) == 0 ? 1 : ParseDecimal(d.Cantidad)),
-                    baseIgv = (ParseDecimal(d.PrecioTotal) / 1.18m),
-                    igv = ParseDecimal(d.PrecioTotal) - (ParseDecimal(d.PrecioTotal) / 1.18m),
-                    totalImpuestos = ParseDecimal(d.PrecioTotal) - (ParseDecimal(d.PrecioTotal) / 1.18m),
-                    valorVenta = (ParseDecimal(d.PrecioTotal) / 1.18m),
-                    tipAfeIgv = d.TipoIgv == "Gravado (18%)" ? "10" : "20"
+                details = FacturaDetalles.Select(d => {
+                    decimal cantidad = ParseDecimal(d.Cantidad);
+                    decimal precioTotal = ParseDecimal(d.PrecioTotal);
+                    
+                    // SUNAT: El precio total incluye IGV. 
+                    // Valor unitario = (Precio Total / 1.18) / Cantidad
+                    decimal valorTotal = Math.Round(precioTotal / 1.18m, 2);
+                    decimal igvTotal = precioTotal - valorTotal;
+                    decimal valorUnitario = Math.Round(valorTotal / (cantidad == 0 ? 1 : cantidad), 2);
+                    decimal precioUnitario = Math.Round(precioTotal / (cantidad == 0 ? 1 : cantidad), 2);
+
+                    return new
+                    {
+                        codigo = d.Codigo,
+                        descripcion = d.Descripcion,
+                        cantidad = cantidad,
+                        unidad = "NIU",
+                        precioUnitario = precioUnitario,
+                        valorUnitario = valorUnitario,
+                        baseIgv = valorTotal,
+                        igv = igvTotal,
+                        totalImpuestos = igvTotal,
+                        valorVenta = valorTotal,
+                        tipAfeIgv = d.TipoIgv == "Gravado (18%)" ? "10" : "20"
+                    };
                 }).ToList(),
                 totales = new
                 {
@@ -723,7 +735,8 @@ public partial class DashboardWindow : Window, INotifyPropertyChanged
 
     private static string GetApiToken()
     {
-        return Environment.GetEnvironmentVariable("APISPERU_TOKEN")?.Trim() ?? string.Empty;
+        // Token proporcionado por el usuario
+        return "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6Imdpbm9hbGVqYW5kcm9tZXphQGdtYWlsLmNvbSJ9.7A_OR3NAJa6Z0StAVETzUt16BqKqQECHWbRmtElJjTs";
     }
 
     private async void FacturaDocNumero_LostFocus(object sender, RoutedEventArgs e)

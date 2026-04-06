@@ -15,8 +15,10 @@ output.txt
 
 # Greenter / SUNAT
 greenter-bridge/archivos_sunat/
-greenter-bridge/*.pem
+# greenter-bridge/*.pem  <-- Comentado para subir el certificado de prueba
 greenter-bridge/*.pfx
+greenter-bridge/generate_cert.php
+greenter-bridge/test_sunat_payload.json
 
 # Database
 database/*.sql.bak

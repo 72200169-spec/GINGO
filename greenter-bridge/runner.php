@@ -89,7 +89,43 @@ try {
             ->setNombreComercial(getValue($emisorData, 'nombreComercial', 'EMPRESA PRUEBA'))
             ->setAddress($address);
 
-        $totales = getValue($payload, 'totales', []);
+        $details = [];
+        $calculatedMtoOperGravadas = 0;
+        $calculatedMtoIGV = 0;
+        $calculatedTotalImpuestos = 0;
+        $calculatedTotalVenta = 0;
+
+        foreach ($payload['details'] ?? [] as $det) {
+            $cantidad = (float)($det['cantidad'] ?? 1);
+            $valorUnitario = (float)($det['valorUnitario'] ?? 0);
+            $precioUnitario = (float)($det['precioUnitario'] ?? 0);
+            $baseIgv = (float)($det['baseIgv'] ?? 0);
+            $igv = (float)($det['igv'] ?? 0);
+            $tipAfeIgv = getValue($det, 'tipAfeIgv', '10');
+
+            $item = (new SaleDetail())
+                ->setCodProducto(getValue($det, 'codigo', 'P001'))
+                ->setUnidad(getValue($det, 'unidad', 'NIU'))
+                ->setCantidad($cantidad)
+                ->setMtoValorUnitario($valorUnitario)
+                ->setDescripcion(getValue($det, 'descripcion', 'PRODUCTO'))
+                ->setMtoBaseIgv($baseIgv)
+                ->setPorcentajeIgv(18.00)
+                ->setIgv($igv)
+                ->setTipAfeIgv($tipAfeIgv)
+                ->setTotalImpuestos($igv)
+                ->setMtoValorVenta($baseIgv)
+                ->setMtoPrecioUnitario($precioUnitario);
+            
+            $details[] = $item;
+
+            if ($tipAfeIgv === '10') {
+                $calculatedMtoOperGravadas += $baseIgv;
+                $calculatedMtoIGV += $igv;
+                $calculatedTotalImpuestos += $igv;
+            }
+            $calculatedTotalVenta += ($baseIgv + $igv);
+        }
 
         $invoice = (new Invoice())
             ->setUblVersion('2.1')
@@ -102,54 +138,16 @@ try {
             ->setTipoMoneda(getValue($payload, 'moneda', 'PEN'))
             ->setCompany($company)
             ->setClient($client)
-            ->setMtoOperGravadas((float)($totales['operGravadas'] ?? 0))
-            ->setMtoIGV((float)($totales['igv'] ?? 0))
-            ->setTotalImpuestos((float)($totales['totalImpuestos'] ?? 0))
-            ->setValorVenta((float)($totales['operGravadas'] ?? 0))
-            ->setSubTotal((float)($totales['totalVenta'] ?? 0))
-            ->setMtoImpVenta((float)($totales['totalVenta'] ?? 0));
-
-        $details = [];
-        foreach ($payload['details'] ?? [] as $det) {
-            $item = (new SaleDetail())
-                ->setCodProducto(getValue($det, 'codigo', 'P001'))
-                ->setUnidad(getValue($det, 'unidad', 'NIU'))
-                ->setCantidad((float)($det['cantidad'] ?? 1))
-                ->setMtoValorUnitario((float)($det['valorUnitario'] ?? 0))
-                ->setDescripcion(getValue($det, 'descripcion', 'PRODUCTO'))
-                ->setMtoBaseIgv((float)($det['baseIgv'] ?? 0))
-                ->setPorcentajeIgv((float)($det['porcentajeIgv'] ?? 18.00))
-                ->setIgv((float)($det['igv'] ?? 0))
-                ->setTipAfeIgv(getValue($det, 'tipAfeIgv', '10'))
-                ->setTotalImpuestos((float)($det['totalImpuestos'] ?? 0))
-                ->setMtoValorVenta((float)($det['valorVenta'] ?? 0))
-                ->setMtoPrecioUnitario((float)($det['precioUnitario'] ?? 0));
-            $details[] = $item;
-        }
-
-        if (empty($details)) {
-            $detalle = $payload['detalle'] ?? [];
-            if (!empty($detalle)) {
-                $item = (new SaleDetail())
-                    ->setCodProducto(getValue($detalle, 'codigo', 'P001'))
-                    ->setUnidad(getValue($detalle, 'unidad', 'NIU'))
-                    ->setCantidad((float)($detalle['cantidad'] ?? 1))
-                    ->setMtoValorUnitario((float)($detalle['valorUnitario'] ?? 0))
-                    ->setDescripcion(getValue($detalle, 'descripcion', 'PRODUCTO'))
-                    ->setMtoBaseIgv((float)($detalle['baseIgv'] ?? 0))
-                    ->setPorcentajeIgv((float)($detalle['porcentajeIgv'] ?? 18.00))
-                    ->setIgv((float)($detalle['igv'] ?? 0))
-                    ->setTipAfeIgv(getValue($detalle, 'tipAfeIgv', '10'))
-                    ->setTotalImpuestos((float)($detalle['totalImpuestos'] ?? 0))
-                    ->setMtoValorVenta((float)($detalle['valorVenta'] ?? 0))
-                    ->setMtoPrecioUnitario((float)($detalle['precioUnitario'] ?? 0));
-                $details[] = $item;
-            }
-        }
+            ->setMtoOperGravadas(round($calculatedMtoOperGravadas, 2))
+            ->setMtoIGV(round($calculatedMtoIGV, 2))
+            ->setTotalImpuestos(round($calculatedTotalImpuestos, 2))
+            ->setValorVenta(round($calculatedMtoOperGravadas, 2))
+            ->setSubTotal(round($calculatedTotalVenta, 2))
+            ->setMtoImpVenta(round($calculatedTotalVenta, 2));
 
         $legend = (new Legend())
             ->setCode('1000')
-            ->setValue(getValue($payload, 'montoLetras', 'SON ZERO CON 00/100 SOLES'));
+            ->setValue(getValue($payload, 'montoLetras', 'SON ' . number_format($calculatedTotalVenta, 2, '.', '') . ' SOLES'));
 
         $invoice->setDetails($details)->setLegends([$legend]);
 
